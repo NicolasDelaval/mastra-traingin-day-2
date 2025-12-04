@@ -66,13 +66,5 @@ export const stackpickerAgent = new Agent({
 		storage: new LibSQLStore({
 			url: 'file:../mastra.db', // path is relative to the .mastra/output directory
 		}),
-
-		// (Optionnel) si ta version le supporte : configuration plus fine
-		// longTermMemory: {
-		//   enabled: true,
-		//   // Regrouper par utilisateur ou par projet si tu as un ID utilisateur
-		//   key: (context) => context.userId || context.sessionId,
-		//   ttlDays: 30, // garder 30 jours d’historique
-		// },
 	}),
 });
