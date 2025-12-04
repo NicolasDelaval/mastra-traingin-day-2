@@ -1,8 +1,11 @@
+// stackpickerAgent.ts
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
 import { LibSQLStore } from '@mastra/libsql';
 import { scorers } from '../scorers/weather-scorer';
 import { redditSearchTool } from '../tools/stackpicker-tool';
+
+import { mcpClient } from  '../mcp/client';
 
 export const stackpickerAgent = new Agent({
 	name: 'StackPicker Agent',
@@ -17,10 +20,36 @@ export const stackpickerAgent = new Agent({
       - Keep responses concise but informative
       - Respond in the format they request.
 
-      Use the weatherTool to fetch current weather data.
+      You also have access to filesystem tools exposed through the Model Context Protocol (MCP) filesystem server.
+
+      When the user asks you to save results to a file (for example: "sauvegarde cette réponse dans un fichier", 
+      "write this to a file", "exporte en .txt" etc.):
+      - Use the filesystem MCP tools (like "writeFile" if available) to create or overwrite a file.
+      - Choose a simple default path if none is given, such as "./output/stackpicker-result.txt".
+      - Confirm to the user that the file has been written and indicate the path.
+
   `,
 	model: 'mistral/mistral-medium-2508',
-	tools: { redditSearchTool },
+
+	/**
+	 * Ici, on récupère dynamiquement les outils du serveur MCP filesystem
+	 * via mcpClient.getTools(), et on les merge avec nos tools internes.
+	 */
+	tools: async () => {
+		// Récupère les tools MCP (filesystem, etc.)
+		const mcpTools = await mcpClient.getTools();
+
+		// mcpTools est supposé être un objet de la forme { toolName: toolInstance, ... }
+		// On merge avec nos tools "maison"
+		return {
+			// tools existants
+			redditSearchTool,
+
+			// tous les tools fournis par le serveur filesystem (ex: readFile, writeFile, listDir, etc.)
+			...mcpTools,
+		};
+	},
+
 	scorers: {
 		toolCallAppropriateness: {
 			scorer: scorers.toolCallAppropriatenessScorer,
@@ -35,10 +64,10 @@ export const stackpickerAgent = new Agent({
 			sampling: { type: 'ratio', rate: 1 },
 		},
 	},
+
 	memory: new Memory({
 		workingMemory: {
 			enabled: true,
-			// Ce template sert d’ancrage pour le contexte court-terme
 			template: `# Contexte de la conversation
 - **Objectif utilisateur**: {{goal}}
 - **Niveau technique**: {{user_skill_level}}
@@ -58,11 +87,8 @@ export const stackpickerAgent = new Agent({
 - **Décisions d’architecture récentes**: {{recent_decisions}}
 - **Technos envisagées**: {{candidate_technologies}}
 `,
-			// Optionnel selon l’API de ta version de Mastra :
-			// maxTokens: 800,  // pour éviter un contexte qui explose
 		},
 
-		// Stockage persistant
 		storage: new LibSQLStore({
 			url: 'file:../mastra.db', // path is relative to the .mastra/output directory
 		}),
